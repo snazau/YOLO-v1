@@ -1,4 +1,13 @@
+import numpy as np
 import torch
+
+
+def hwc2chw(tensor):
+    return np.transpose(tensor, (2, 0, 1))
+
+
+def chw2hwc(tensor):
+    return np.transpose(tensor, (1, 2, 0))
 
 
 def bboxes_iou(bboxes1, bboxes2, eps=1e-5):
