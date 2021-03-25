@@ -106,8 +106,8 @@ class YOLOLoss(torch.nn.Module):
             )
 
         # Loss classification
-        class_pred = obj_presented_target * predictions[:class_amount]  # Loss calculated only over cells where object exist
-        class_target = obj_presented_target * targets[:class_amount]  # Loss calculated only over cells where object exist
+        class_pred = obj_presented_target * predictions[..., :class_amount]  # Loss calculated only over cells where object exist
+        class_target = obj_presented_target * targets[..., :class_amount]  # Loss calculated only over cells where object exist
         loss_classification = self.mse(
             torch.flatten(class_pred),
             torch.flatten(class_target),
@@ -115,7 +115,6 @@ class YOLOLoss(torch.nn.Module):
 
         # Complete loss
         loss = self.lambda_coord * loss_coords + loss_obj_presented + self.lambda_noobj * loss_no_obj_presented + loss_classification
-        print("loss", loss.shape, loss)
 
         return loss
 
@@ -144,15 +143,13 @@ if __name__ == "__main__":
     predictions = torch.randn(batch_size, grid_size * grid_size * (class_amount + 5 * bbox_pred_amount))
     print("predictions", predictions.shape)
 
-    targets = torch.randn(batch_size, grid_size, grid_size, class_amount + 5 * bbox_pred_amount)
-    for bbox_pred_number in range(bbox_pred_amount):
-        obj_presented_index = class_amount + 5 * bbox_pred_number
-        targets[..., obj_presented_index] = (targets[..., obj_presented_index] > 0.5) * 1
-        targets = torch.abs(targets)
-        # print("bbox_pred_number", bbox_pred_number, targets[0, :, :, obj_presented_index])
+    targets = torch.randn(batch_size, grid_size, grid_size, class_amount + 5 * 1)
+    obj_presented_index = class_amount
+    targets[..., obj_presented_index] = (targets[..., obj_presented_index] > 0.5) * 1
+    targets = torch.abs(targets)
 
     print("targets", targets.shape)
     print("targets[0, 0, 0, :]", targets[0, 0, 0, :])
 
     loss = criterion(predictions, targets)
-
+    print("loss", loss.shape, loss)
