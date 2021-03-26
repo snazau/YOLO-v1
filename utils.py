@@ -1,3 +1,4 @@
+from collections import Counter
 import numpy as np
 import torch
 
@@ -43,3 +44,82 @@ def bboxes_iou(bboxes1, bboxes2, eps=1e-5):
     iou = intersection / (union + eps)
 
     return iou
+
+
+def mAP(bboxes_pred, bboxes_gt, threshold, class_amount, eps=1e-5):
+    """
+    bbox_pred:  list of bboxes
+    bboxes_gt: list of bboxes
+    threshold: float IoU threshold
+    bbox is a list: [image_id, class_pred, confidence, x1, y1, x2, y2]
+    """
+
+    APs = []
+    for class_eval in range(class_amount):
+        class_specific_pred_bboxes = [bbox_pred for bbox_pred in bboxes_pred if bbox_pred[1] == class_eval]
+        class_specific_gt_bboxes = [bbox_gt for bbox_gt in bboxes_gt if bbox_gt[1] == class_eval]
+
+        # image_id_to_bbox_gt_mapping needs to exclude multiple TP for single gt bbox
+        is_gt_bbox_used = Counter([bbox[0] for bbox in class_specific_gt_bboxes])
+        for image_id, bboxes_gt_amount in is_gt_bbox_used.items():
+            is_gt_bbox_used[image_id] = torch.zeros(bboxes_gt_amount)
+
+        # Sort pred bboxes by confidence score
+        class_specific_pred_bboxes.sort(key=lambda x: x[2], reverse=True)
+
+        TP = torch.zeros(len(class_specific_pred_bboxes))
+        FP = torch.zeros(len(class_specific_pred_bboxes))
+        gt_bboxes_amount = len(class_specific_gt_bboxes)
+        if gt_bboxes_amount == 0:
+            continue
+
+        # Create image_id to gt bboxes mapping
+        image_id_to_gt_bboxes_mapping = {}
+
+        image_ids_of_pred_bboxes = [bbox[0] for bbox in class_specific_pred_bboxes]
+        for image_id in image_ids_of_pred_bboxes:
+            image_id_to_gt_bboxes_mapping[image_id] = []
+
+        for bbox_gt in class_specific_gt_bboxes:
+            image_id = bbox_gt[0]
+            if image_id not in image_id_to_gt_bboxes_mapping:
+                image_id_to_gt_bboxes_mapping[image_id] = []
+            image_id_to_gt_bboxes_mapping[image_id].append(bbox_gt)
+
+        # Check TPs and FPs
+        for index_bbox_pred, bbox_pred in enumerate(class_specific_pred_bboxes):
+            image_id_pred = bbox_pred[0]
+            image_specific_gt_bboxes = image_id_to_gt_bboxes_mapping[image_id_pred]
+
+            best_iou = -1
+            best_iou_index = -1
+            for index_bbox_gt, bbox_gt in enumerate(image_specific_gt_bboxes):
+                iou = bboxes_iou(torch.tensor(bbox_pred[3:]), torch.tensor(bbox_gt[3:]))
+                if iou > best_iou:
+                    best_iou = iou
+                    best_iou_index = index_bbox_gt
+
+            if best_iou > threshold:
+                if is_gt_bbox_used[image_id_pred][best_iou_index] == 0:
+                    TP[index_bbox_pred] = 1
+                    is_gt_bbox_used[image_id_pred][best_iou_index] = 1
+                else:
+                    FP[index_bbox_pred] = 1
+            else:
+                FP[index_bbox_pred] = 1
+
+        # Calculate precision and recall values
+        TP_cumulative_sum = torch.cumsum(TP, dim=0)
+        FP_cumulative_sum = torch.cumsum(FP, dim=0)
+        recall_values = TP_cumulative_sum / (gt_bboxes_amount + eps)
+        precision_values = TP_cumulative_sum / (TP_cumulative_sum + FP_cumulative_sum + eps)
+
+        # Add (0, 1) point at the beginning of the PR-curve
+        precision_values = torch.cat((torch.tensor([1]), precision_values))
+        recall_values = torch.cat((torch.tensor([0]), recall_values))
+        PR_curve_area = torch.trapz(precision_values, recall_values)
+        APs.append(PR_curve_area)
+
+    mAP = sum(APs) / len(APs)
+    print(mAP)
+    return mAP
