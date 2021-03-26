@@ -1,5 +1,6 @@
 # Custom
 data/*
+tests/*
 inference_test/*
 runs/*
 weights/*
