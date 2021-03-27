@@ -30,7 +30,7 @@ class YOLODataset(torch.utils.data.Dataset):
         return len(self.filenames)
 
     def __getitem__(self, index):
-        image_path = os.path.join(images_dir, self.filenames[index])
+        image_path = os.path.join(self.images_dir, self.filenames[index])
         image_bgr = cv2.imread(image_path)
         image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
