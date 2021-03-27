@@ -12,13 +12,6 @@ def chw2hwc(tensor):
     return np.transpose(tensor, (1, 2, 0))
 
 
-def plot_grid_relative_data(image, grid_bboxes, grid_size, bbox_pred_amount, class_amount):
-    """
-    grid = [...,
-    """
-    pass
-
-
 def plot_one_box(x, img, color, label, line_thickness=None):
     # print(type(line_thickness), line_thickness)
     line_thickness = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
