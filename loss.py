@@ -4,7 +4,7 @@ import utils
 
 
 class YOLOLoss(torch.nn.Module):
-    def __init__(self, grid_size, bbox_pred_amount, class_amount, lambda_coord=5, lambda_noobj=0.5, reduction='sum', eps=1e-5):
+    def __init__(self, grid_size, bbox_pred_amount, class_amount, lambda_coord=5, lambda_obj=1, lambda_noobj=0.5, lambda_classification=1, reduction='sum', eps=1e-5):
         super(YOLOLoss, self).__init__()
 
         self.grid_size = grid_size
@@ -12,7 +12,9 @@ class YOLOLoss(torch.nn.Module):
         self.class_amount = class_amount
 
         self.lambda_coord = lambda_coord
+        self.lambda_obj = lambda_obj
         self.lambda_noobj = lambda_noobj
+        self.lambda_classification = lambda_classification
 
         self.reduction = reduction
         self.eps = eps
@@ -114,8 +116,7 @@ class YOLOLoss(torch.nn.Module):
         )
 
         # Complete loss
-        loss = self.lambda_coord * loss_coords + loss_obj_presented + self.lambda_noobj * loss_no_obj_presented + loss_classification
-
+        loss = self.lambda_coord * loss_coords + self.lambda_obj * loss_obj_presented + self.lambda_noobj * loss_no_obj_presented + self.lambda_classification * loss_classification
         return loss
 
 
