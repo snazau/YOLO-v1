@@ -1,19 +1,22 @@
 import cv2
+import numpy as np
 import os
 import pandas as pd
 import torch
 
+import config
 import utils
 
 
 class YOLODataset(torch.utils.data.Dataset):
-    def __init__(self, images_dir, labels_dir, csv_path, grid_size, bbox_pred_amount, class_amount, transform=None):
+    def __init__(self, images_dir, labels_dir, csv_path, image_size, grid_size, class_amount, transform=None):
         self.images_dir = images_dir
         self.filenames = []
         self.labels = []
 
+        self.images_size = image_size
+
         self.grid_size = grid_size
-        self.bbox_pred_amount = bbox_pred_amount
         self.class_amount = class_amount
 
         df = pd.read_csv(csv_path)
@@ -31,7 +34,7 @@ class YOLODataset(torch.utils.data.Dataset):
         image_bgr = cv2.imread(image_path)
         image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
-        new_shape = (448, 448)
+        new_shape = (self.images_size, self.images_size)
         image = cv2.resize(image, new_shape, interpolation=cv2.INTER_CUBIC)
         image = image.astype(np.float32)
         image /= 255.0
@@ -88,31 +91,89 @@ class YOLODataset(torch.utils.data.Dataset):
         return bboxes
 
 
+def visualize_sample(sample, grid_size, class_amount):
+    import copy
+    image = copy.deepcopy(sample["tensor"])
+    image = utils.chw2hwc(image)
+    image = image.detach().cpu().numpy()
+    image *= 255
+    image = image.astype(np.uint8)
+
+    image_height, image_width = image.shape[:2]
+
+    label = sample["label"]
+    objects_amount = 0
+    for cell_i in range(grid_size):
+        for cell_j in range(grid_size):
+            cell_info = label[cell_i, cell_j]
+            is_obj_presented = cell_info[class_amount]
+            if is_obj_presented == 1:
+                objects_amount += 1
+
+                cell_relative_center_x = cell_info[class_amount + 1]
+                cell_relative_center_y = cell_info[class_amount + 2]
+                width_in_cell_size = cell_info[class_amount + 3]
+                height_in_cell_size = cell_info[class_amount + 4]
+
+                image_relative_cell_size = 1 / grid_size
+                image_relative_center_x = cell_j * image_relative_cell_size + cell_relative_center_x * image_relative_cell_size
+                image_relative_center_y = cell_i * image_relative_cell_size + cell_relative_center_y * image_relative_cell_size
+                width_in_image_size = width_in_cell_size / grid_size
+                height_in_image_size = height_in_cell_size / grid_size
+
+                color = [np.random.randint(0, 255) for _ in range(3)]
+                bbox_title = str(objects_amount) + "_o"
+                object_bbox = [
+                    (image_relative_center_x - width_in_image_size / 2) * image_width,
+                    (image_relative_center_y - height_in_image_size / 2) * image_height,
+                    (image_relative_center_x + width_in_image_size / 2) * image_width,
+                    (image_relative_center_y + height_in_image_size / 2) * image_height,
+                ]
+                utils.plot_one_box(object_bbox, image, color, bbox_title)
+
+                cell_bbox = [
+                    image_relative_cell_size * cell_j * image_width,
+                    image_relative_cell_size * cell_i * image_height,
+                    image_relative_cell_size * (cell_j + 1) * image_width,
+                    image_relative_cell_size * (cell_i + 1) * image_height,
+                ]
+                color = [np.random.randint(0, 255) for _ in range(3)]
+                bbox_title = str(objects_amount) + "_c"
+                utils.plot_one_box(cell_bbox, image, color, bbox_title)
+
+    import matplotlib.pyplot as plt
+    plt.imshow(image)
+    plt.show()
+
+
 if __name__ == "__main__":
     import __main__
     print("Run of", __main__.__file__)
 
     # Reproducibility
-    torch.manual_seed(0)
-
+    # torch.manual_seed(0)
+    #
     import random
-    random.seed(0)
-
-    import numpy as np
-    np.random.seed(0)
+    # random.seed(0)
+    #
+    # import numpy as np
+    # np.random.seed(0)
 
     # Data
     base_dir = os.path.join(".", "data")
-    images_dir = os.path.join(base_dir, "one_image")
-    labels_dir = os.path.join(base_dir, "one_label")
-    csv_path = os.path.join(base_dir, "one_sample.csv")
+    images_dir = os.path.join(base_dir, "images")
+    labels_dir = os.path.join(base_dir, "labels")
+    csv_path = os.path.join(base_dir, "8examples.csv")
 
     grid_size = 7
-    bbox_pred_amount = 2
     class_amount = 20
 
-    dataset = YOLODataset(images_dir, labels_dir, csv_path, grid_size, bbox_pred_amount, class_amount)
-    sample = dataset[0]
+    dataset = YOLODataset(images_dir, labels_dir, csv_path, config.desired_image_size, grid_size, class_amount)
+    random_index = random.randint(0, len(dataset) - 1)
+    # random_index = 0
+    sample = dataset[random_index]
+    visualize_sample(sample, grid_size, class_amount)
+
     tensor = sample["tensor"]
     tensor_label = sample["label"]
     filename = sample["filename"]

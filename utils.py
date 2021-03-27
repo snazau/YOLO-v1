@@ -1,4 +1,5 @@
 from collections import Counter
+import cv2
 import numpy as np
 import torch
 
@@ -9,6 +10,26 @@ def hwc2chw(tensor):
 
 def chw2hwc(tensor):
     return np.transpose(tensor, (1, 2, 0))
+
+
+def plot_grid_relative_data(image, grid_bboxes, grid_size, bbox_pred_amount, class_amount):
+    """
+    grid = [...,
+    """
+    pass
+
+
+def plot_one_box(x, img, color, label, line_thickness=None):
+    # print(type(line_thickness), line_thickness)
+    line_thickness = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
+    c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
+    cv2.rectangle(img, c1, c2, color, thickness=line_thickness, lineType=cv2.LINE_AA)
+    if label:
+        font_thickness = max(line_thickness - 1, 1)  # font thickness
+        t_size = cv2.getTextSize(label, 0, fontScale=line_thickness / 3, thickness=font_thickness)[0]
+        c2 = c1[0] + t_size[0], c1[1] - t_size[1] - 3
+        cv2.rectangle(img, c1, c2, color, -1, cv2.LINE_AA)  # filled
+        cv2.putText(img, label, (c1[0], c1[1] - 2), 0, line_thickness / 3, [225, 255, 255], thickness=font_thickness, lineType=cv2.LINE_AA)
 
 
 def bboxes_iou(bboxes1, bboxes2, eps=1e-5):
