@@ -51,45 +51,45 @@ class YOLOLoss(torch.nn.Module):
         iou_maxes, bbox_responsible_number = torch.max(bboxes_ious, dim=0)  # (batch_size, grid_size, grid_size, 1) both
 
         # Find attributes of responsible bboxes (bbox coords and obj prob)
-        bbox_pred_responsible = torch.zeros(*predictions.shape[:-1], 4)  # (batch_size, grid_size, grid_size, 4)
-        obj_presented_pred_responsible = torch.zeros(*predictions.shape[:-1], 1)  # (batch_size, grid_size, grid_size, 1)
+        bbox_pred_responsible = torch.zeros(*predictions.shape[:-1], 4).to(targets.device)  # (batch_size, grid_size, grid_size, 4)
+        obj_presented_pred_responsible = torch.zeros(*predictions.shape[:-1], 1).to(targets.device)  # (batch_size, grid_size, grid_size, 1)
         for bbox_pred_number in range(self.bbox_pred_amount):
             # Select pred bboxes
             bbox_pred_start_index = self.class_amount + 5 * bbox_pred_number + 1
             bbox_pred_end_index = bbox_pred_start_index + 4
-            bbox_pred = predictions[..., bbox_pred_start_index:bbox_pred_end_index]  # (batch_size, grid_size, grid_size, 4)
+            bbox_pred = predictions[..., bbox_pred_start_index:bbox_pred_end_index].clone()  # (batch_size, grid_size, grid_size, 4)
 
             # Select pred obj prob
             obj_presented_pred_index = self.class_amount + 5 * bbox_pred_number
-            obj_presented_pred = predictions[..., obj_presented_pred_index:obj_presented_pred_index + 1]  # (batch_size, grid_size, grid_size, 1)
+            obj_presented_pred = predictions[..., obj_presented_pred_index:obj_presented_pred_index + 1].clone()  # (batch_size, grid_size, grid_size, 1)
 
             # Update responsible attributes
-            bbox_responsible_mask = (bbox_responsible_number == bbox_pred_number) * 1  # (batch_size, grid_size, grid_size, 1)
-            bbox_pred_responsible += bbox_responsible_mask * bbox_pred
+            bbox_responsible_mask = (bbox_responsible_number == bbox_pred_number)  # (batch_size, grid_size, grid_size, 1)
+            bbox_pred_responsible = bbox_pred_responsible + bbox_responsible_mask * bbox_pred
             obj_presented_pred_responsible += bbox_responsible_mask * obj_presented_pred
 
         # Fix bbox predictions to avoid numerical errors
-        gradient_sign = torch.sign(bbox_pred_responsible[..., 2:4])
-        bbox_pred_responsible[..., 2:4] = torch.abs(bbox_pred_responsible[..., 2:4])  # since at the beginning NN may predict negative values for width and height of bbox
-        bbox_pred_responsible[..., 2:4] = torch.sqrt(bbox_pred_responsible[..., 2:4] + self.eps)  # eps to avoid sqrt(0)
-        bbox_pred_responsible[..., 2:4] *= gradient_sign
+        gradient_sign = torch.sign(bbox_pred_responsible[..., 2:4].clone())
+        bbox_pred_responsible[..., 2:4] = torch.abs(bbox_pred_responsible[..., 2:4].clone())  # since at the beginning NN may predict negative values for width and height of bbox
+        bbox_pred_responsible[..., 2:4] = torch.sqrt(bbox_pred_responsible[..., 2:4].clone() + self.eps)  # eps to avoid sqrt(0)
+        bbox_pred_responsible[..., 2:4] = bbox_pred_responsible[..., 2:4].clone() * gradient_sign
 
-        bbox_targets[..., 2:4] = torch.sqrt(bbox_targets[..., 2:4])
+        bbox_targets[..., 2:4] = torch.sqrt(bbox_targets[..., 2:4].clone())
 
         # Select gt obj presented in cell mask
-        obj_presented_target_index = class_amount
+        obj_presented_target_index = self.class_amount
         obj_presented_target = targets[..., obj_presented_target_index:obj_presented_target_index + 1]  # (batch_size, grid_size, grid_size, 1)
 
         # Loss coordinates
-        bbox_pred_responsible *= obj_presented_target  # Loss calculated only over cells where object exist
-        bbox_targets *= obj_presented_target  # Loss calculated only over cells where object exist
+        bbox_pred_responsible = bbox_pred_responsible * obj_presented_target  # Loss calculated only over cells where object exist
+        bbox_targets = bbox_targets * obj_presented_target  # Loss calculated only over cells where object exist
         loss_coords = self.mse(
             torch.flatten(bbox_pred_responsible),
             torch.flatten(bbox_targets),
         )
 
         #  Loss obj presented
-        obj_presented_pred_responsible *= obj_presented_target  # Loss calculated only over cells where object exist
+        obj_presented_pred_responsible = obj_presented_pred_responsible * obj_presented_target  # Loss calculated only over cells where object exist
         loss_obj_presented = self.mse(
             torch.flatten(obj_presented_pred_responsible),
             torch.flatten(obj_presented_target),
@@ -102,14 +102,14 @@ class YOLOLoss(torch.nn.Module):
             obj_presented_pred_index = self.class_amount + 5 * bbox_pred_number
             obj_presented_pred = predictions[..., obj_presented_pred_index:obj_presented_pred_index + 1]  # (batch_size, grid_size, grid_size, 1)
 
-            loss_no_obj_presented += self.mse(
+            loss_no_obj_presented = loss_no_obj_presented + self.mse(
                 torch.flatten((1 - obj_presented_target) * obj_presented_pred),
                 torch.flatten(1 - obj_presented_target),
             )
 
         # Loss classification
-        class_pred = obj_presented_target * predictions[..., :class_amount]  # Loss calculated only over cells where object exist
-        class_target = obj_presented_target * targets[..., :class_amount]  # Loss calculated only over cells where object exist
+        class_pred = obj_presented_target * predictions[..., :self.class_amount]  # Loss calculated only over cells where object exist
+        class_target = obj_presented_target * targets[..., :self.class_amount]  # Loss calculated only over cells where object exist
         loss_classification = self.mse(
             torch.flatten(class_pred),
             torch.flatten(class_target),
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     grid_size = 7
     bbox_pred_amount = 2
     class_amount = 20
-    criterion = YOLOLoss(grid_size, bbox_pred_amount, class_amount)
+    criterion = YOLOLoss(grid_size, bbox_pred_amount, class_amount, reduction="mean")
 
     # Fake input generation
     batch_size = 8
