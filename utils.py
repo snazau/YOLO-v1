@@ -60,7 +60,35 @@ def bboxes_iou(bboxes1, bboxes2, eps=1e-5):
     return iou
 
 
-def mAP(bboxes_pred, bboxes_gt, threshold, class_amount, eps=1e-5):
+def nms(bboxes, iou_threshold, confidence_threshold):
+    """
+    bboxes - list of bboxes where
+    bbox = [class_pred, prob_score, x1, y1, x2, y2]
+    Returns list of bboxes after NMS
+    """
+
+    assert type(bboxes) == list
+
+    bboxes = [box for box in bboxes if box[1] > confidence_threshold]
+    bboxes = sorted(bboxes, key=lambda x: x[1], reverse=True)
+
+    bboxes_saved = []
+    while bboxes:
+        bbox_with_best_confidence = bboxes.pop(0)
+        bboxes_saved.append(bbox_with_best_confidence)
+
+        bboxes_wo_ovelapping = []
+        for bbox in bboxes:
+            if bbox[0] != bbox_with_best_confidence[0]:
+                bboxes_wo_ovelapping.append(bbox)
+            elif bboxes_iou(torch.tensor(bbox_with_best_confidence[2:]), torch.tensor(bbox[2:])) < iou_threshold:
+                bboxes_wo_ovelapping.append(bbox)
+        bboxes = bboxes_wo_ovelapping
+
+    return bboxes_saved
+
+
+def mAP(bboxes_pred, bboxes_gt, iou_threshold, class_amount, eps=1e-5):
     """
     bbox_pred:  list of bboxes
     bboxes_gt: list of bboxes
@@ -113,7 +141,7 @@ def mAP(bboxes_pred, bboxes_gt, threshold, class_amount, eps=1e-5):
                     best_iou = iou
                     best_iou_index = index_bbox_gt
 
-            if best_iou > threshold:
+            if best_iou > iou_threshold:
                 if is_gt_bbox_used[image_id_pred][best_iou_index] == 0:
                     TP[index_bbox_pred] = 1
                     is_gt_bbox_used[image_id_pred][best_iou_index] = 1
@@ -135,5 +163,4 @@ def mAP(bboxes_pred, bboxes_gt, threshold, class_amount, eps=1e-5):
         APs.append(PR_curve_area)
 
     mAP = sum(APs) / len(APs)
-    print(mAP)
     return mAP
