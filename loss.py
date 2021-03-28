@@ -24,17 +24,15 @@ class YOLOLoss(torch.nn.Module):
     def forward(self, predictions, targets):
         """
         Calculates YOLOLoss for given predictions and targets
-        :param predictions: tensor with shape (batch_size, grid_size * grid_size * (class_amount + 5 * bbox_pred_amount))
-        :param targets: tensor with shape (batch_size, grid_size, grid_size, (class_amount + 5 * bbox_pred_amount))
+        :param predictions: tensor with shape (batch_size, grid_size, grid_size, (class_amount + 5 * bbox_pred_amount))
+        :param targets: tensor with shape (batch_size, grid_size, grid_size, (class_amount + 5))
         :return: loss value
         """
-
-        predictions = predictions.reshape(-1, self.grid_size, self.grid_size, self.class_amount + self.bbox_pred_amount * 5)  # (batch_size, grid_size, grid_size, (class_amount + 5 * bbox_pred_amount))
 
         # Select target bboxes
         bbox_target_start_index = self.class_amount + 1
         bbox_target_end_index = bbox_target_start_index + 4
-        bbox_targets = targets[..., bbox_target_start_index:bbox_target_end_index]  # (batch_size, grid_size, grid_size, 4)
+        bbox_targets = targets[..., bbox_target_start_index:bbox_target_end_index].clone()  # (batch_size, grid_size, grid_size, 4)
 
         # Calculate iou between gt and bbox_pred_i
         bboxes_ious = []
@@ -104,7 +102,7 @@ class YOLOLoss(torch.nn.Module):
 
             loss_no_obj_presented = loss_no_obj_presented + self.mse(
                 torch.flatten((1 - obj_presented_target) * obj_presented_pred),
-                torch.flatten(1 - obj_presented_target),
+                torch.flatten((1 - obj_presented_target) * obj_presented_target),
             )
 
         # Loss classification
@@ -137,20 +135,20 @@ if __name__ == "__main__":
     grid_size = 7
     bbox_pred_amount = 2
     class_amount = 20
-    criterion = YOLOLoss(grid_size, bbox_pred_amount, class_amount, reduction="mean")
+    criterion = YOLOLoss(grid_size, bbox_pred_amount, class_amount, reduction="sum")
 
     # Fake input generation
     batch_size = 8
     predictions = torch.randn(batch_size, grid_size * grid_size * (class_amount + 5 * bbox_pred_amount))
+    predictions = predictions.reshape(-1, grid_size, grid_size, class_amount + bbox_pred_amount * 5)  # (batch_size, grid_size, grid_size, (class_amount + 5 * bbox_pred_amount))
     print("predictions", predictions.shape)
 
     targets = torch.randn(batch_size, grid_size, grid_size, class_amount + 5 * 1)
     obj_presented_index = class_amount
     targets[..., obj_presented_index] = (targets[..., obj_presented_index] > 0.5) * 1
     targets = torch.abs(targets)
-
     print("targets", targets.shape)
     print("targets[0, 0, 0, :]", targets[0, 0, 0, :])
 
     loss = criterion(predictions, targets)
-    print("loss", loss.shape, loss)
+    print("loss", loss)
